@@ -99,6 +99,36 @@ bool CNodeResourceImpl::OnEvent(const alt::CEvent* e)
 	if (!handler)
 		return true;
 
+	// Generic event handler
+	{
+		auto evType = e->GetType();
+		if(evType == alt::CEvent::Type::CLIENT_SCRIPT_EVENT || evType == alt::CEvent::Type::SERVER_SCRIPT_EVENT)
+		{
+			std::vector<V8::EventCallback *> callbacks;
+			const char* eventName;
+
+			if(evType == alt::CEvent::Type::SERVER_SCRIPT_EVENT) 
+			{
+				callbacks = std::move(GetLocalHandlers("*"));
+				eventName = static_cast<const alt::CServerScriptEvent*>(e)->GetName().CStr();
+			}
+			else if(evType == alt::CEvent::Type::CLIENT_SCRIPT_EVENT) 
+			{
+				callbacks = std::move(GetRemoteHandlers("*"));
+				eventName = static_cast<const alt::CClientScriptEvent*>(e)->GetName().CStr();
+			}
+
+			if(callbacks.size() != 0)
+			{
+				auto evArgs = handler->GetArgs(this, e);
+				evArgs.insert(evArgs.begin(), v8::String::NewFromUtf8(isolate, eventName, v8::NewStringType::kNormal).ToLocalChecked());
+
+				node::CallbackScope callbackScope(isolate, asyncResource.Get(isolate), asyncContext);
+				InvokeEventHandlers(e, callbacks, evArgs);
+			}
+		}
+	}
+
 	std::vector<V8::EventCallback*> callbacks = handler->GetCallbacks(this, e);
 	if (callbacks.size() > 0)
 	{
